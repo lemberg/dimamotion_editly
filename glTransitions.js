@@ -1,9 +1,9 @@
 const GL = require('gl');
 const ndarray = require('ndarray');
 const createBuffer = require('gl-buffer');
-const transitions = require('gl-transitions');
 const createTransition = require('gl-transition').default;
 const createTexture = require('gl-texture2d');
+const transitions = require('./gl-transitions');
 
 module.exports = ({ width, height, channels }) => {
   const gl = GL(width, height);
