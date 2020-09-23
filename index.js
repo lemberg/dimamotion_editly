@@ -42,6 +42,7 @@ module.exports = async (config = {}) => {
 
     ffmpegPath = 'ffmpeg',
     ffprobePath = 'ffprobe',
+    progressLog,
   } = config;
 
   const isGif = outPath.toLowerCase().endsWith('.gif');
@@ -454,6 +455,7 @@ module.exports = async (config = {}) => {
 
       if (!verbose) {
         const percentDone = Math.floor(100 * (totalFramesWritten / estimatedTotalFrames));
+        progressLog(percentDone);
         if (totalFramesWritten % 10 === 0) process.stdout.write(`${String(percentDone).padStart(3, ' ')}% `);
       }
 
