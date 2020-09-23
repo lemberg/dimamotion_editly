@@ -107,3 +107,5 @@ dist
 /examples/assets
 /examples/*.mp4
 /examples/*.gif
+/.idea/*.xml
+/yarn.lock
