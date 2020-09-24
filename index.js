@@ -7,7 +7,7 @@ const JSON5 = require('json5');
 const fs = require('fs-extra');
 const { nanoid } = require('nanoid');
 
-const { parseFps, readVideoFileInfo, readAudioFileInfo, multipleOf2 } = require('./util');
+const { parseFps, readVideoFileInfo, readAudioFileInfo, multipleOf2, isUrl } = require('./util');
 const { registerFont } = require('./sources/fabric');
 const { createFrameSource } = require('./sources/frameSource');
 const { calcTransition } = require('./transitions');
@@ -20,8 +20,6 @@ const loadedFonts = [];
 
 // See #16
 const checkTransition = (transition) => assert(transition == null || typeof transition === 'object', 'Transition must be an object');
-
-const assertFileExists = async (path) => assert(await fs.exists(path), `File does not exist ${path}`);
 
 module.exports = async (config = {}) => {
   const {
@@ -39,18 +37,27 @@ module.exports = async (config = {}) => {
     audioFilePath: audioFilePathIn,
     loopAudio,
     keepSourceAudio,
+    allowRemoteRequests,
 
     ffmpegPath = 'ffmpeg',
     ffprobePath = 'ffprobe',
     progressLog,
   } = config;
 
+  const assertFileValid = async (path) => {
+    if (isUrl(path)) {
+      assert(allowRemoteRequests, 'Remote requests are not allowed');
+      return;
+    }
+    assert(await fs.exists(path), `File does not exist ${path}`);
+  };
+
   const isGif = outPath.toLowerCase().endsWith('.gif');
 
   let audioFilePath;
   if (!isGif) audioFilePath = audioFilePathIn;
 
-  if (audioFilePath) await assertFileExists(audioFilePath);
+  if (audioFilePath) await assertFileValid(audioFilePath);
 
   checkTransition(defaultsIn.transition);
 
@@ -74,9 +81,9 @@ module.exports = async (config = {}) => {
 
     // https://github.com/mifi/editly/issues/39
     if (['image', 'image-overlay'].includes(type)) {
-      await assertFileExists(restLayer.path);
+      await assertFileValid(restLayer.path);
     } else if (type === 'gl') {
-      await assertFileExists(restLayer.fragmentPath);
+      await assertFileValid(restLayer.fragmentPath);
     }
 
     if (['fabric', 'canvas'].includes(type)) assert(typeof layer.func === 'function', '"func" must be a function');
@@ -132,7 +139,14 @@ module.exports = async (config = {}) => {
   }
 
   const clips = await pMap(clipsIn, async (clip, clipIndex) => {
-    const { transition: userTransition, duration: userClipDuration, layers } = clip;
+    assert(typeof clip === 'object', '"clips" must contain objects with one or more layers');
+    const { transition: userTransition, duration: userClipDuration, layers: layersIn } = clip;
+
+    // Validation
+    let layers = layersIn;
+    if (!Array.isArray(layers)) layers = [layers]; // Allow single layer for convenience
+    assert(layers.every((layer) => layer != null && typeof layer === 'object'), '"clip.layers" must contain one or more objects');
+    assert(layers.every((layer) => layer.type != null), 'All "layers" must have a type');
 
     checkTransition(userTransition);
 
@@ -530,9 +544,10 @@ module.exports = async (config = {}) => {
     } // End while loop
 
     outProcess.stdin.end();
-  } finally {
+  } catch (err) {
     outProcess.kill();
-
+    throw err;
+  } finally {
     if (verbose) console.log('Cleanup');
     if (frameSource1) await frameSource1.close();
     if (frameSource2) await frameSource2.close();
