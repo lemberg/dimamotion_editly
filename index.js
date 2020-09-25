@@ -15,7 +15,6 @@ const { assertFileValid, checkTransition } = require('./util');
 
 const channels = 4;
 
-
 const Editly = async (config = {}) => {
   const {
     // Testing options:
@@ -261,7 +260,9 @@ const Editly = async (config = {}) => {
 
       if (!verbose) {
         const percentDone = Math.floor(100 * (totalFramesWritten / estimatedTotalFrames));
-        progressLog && progressLog(percentDone);
+        if (progressLog) {
+          progressLog(percentDone);
+        }
         if (totalFramesWritten % 10 === 0) process.stdout.write(`${String(percentDone).padStart(3, ' ')}% `);
       }
 
