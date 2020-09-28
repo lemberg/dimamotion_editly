@@ -71,7 +71,7 @@ module.exports = [{
   createdAt: 'Mon, 12 Jun 2017 12:33:07 +0800',
   updatedAt: 'Mon, 12 Jun 2017 12:33:07 +0800',
 }, {
-  name: 'Directional',
+  name: 'directional',
   paramsTypes: { direction: 'vec2' },
   defaultParams: { direction: [0, 1] },
   glsl: '// Author: Gaëtan Renaudeau\n// License: MIT\n\nuniform vec2 direction; // = vec2(0.0, 1.0)\n\nvec4 transition (vec2 uv) {\n  float easing = sqrt((2.0 - progress) * progress);\n  vec2 p = uv + easing * sign(direction);\n  vec2 f = fract(p);\n  return mix(\n    getToColor(f),\n    getFromColor(f),\n    step(0.0, p.y) * step(p.y, 1.0) * step(0.0, p.x) * step(p.x, 1.0)\n  );\n}\n',
