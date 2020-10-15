@@ -12,7 +12,8 @@ Inspired by [ffmpeg-concat](https://github.com/transitive-bullshit/ffmpeg-concat
 
 ## Features
 
-- Edit videos with code! Declarative API with fun defaults
+- Edit videos with code! 🤓
+- Declarative API with fun defaults
 - Create colorful videos with random colors generated from aesthetically pleasing palettes and random effects
 - Supports any input size, e.g. 4K video and DSLR photos
 - Can output to any dimensions and aspect ratio, e.g. *Instagram post* (1:1), *Instagram story* (9:16), *YouTube* (16:9), or any other dimensions you like.
@@ -23,8 +24,9 @@ Inspired by [ffmpeg-concat](https://github.com/transitive-bullshit/ffmpeg-concat
 - Render custom GL shaders (for example from [shadertoy](https://www.shadertoy.com/))
 - Can output GIF
 - Preserve audio sources or mix multiple
-- Overlay transparent images or videos
+- Overlay transparent images or even videos with alpha channel
 - Show different sub-clips for parts of a clips duration (B-roll)
+- Automatic audio crossfading
 
 ## Use cases
 
@@ -110,6 +112,8 @@ Edit specs are JavaScript / JSON objects describing the whole edit operation wit
     transition: {
       duration: 0.5,
       name: 'random',
+      audioOutCurve: 'tri',
+      audioInCurve: 'tri',
     },
     layer: {
       fontPath,
@@ -167,6 +171,8 @@ Edit specs are JavaScript / JSON objects describing the whole edit operation wit
 | `defaults.transition` | | An object `{ name, duration }` describing the default transition. Set to **null** to disable transitions | | |
 | `defaults.transition.duration` | `--transition-duration` | Default transition duration | `0.5` | sec |
 | `defaults.transition.name` | `--transition-name` | Default transition type. See [Transition types](#transition-types) | `random` | |
+| `defaults.transition.audioOutCurve` | | Default [fade out curve](https://trac.ffmpeg.org/wiki/AfadeCurves) in audio cross fades | `tri` | |
+| `defaults.transition.audioInCurve` | | Default [fade in curve](https://trac.ffmpeg.org/wiki/AfadeCurves) in audio cross fades | `tri` | |
 | `clips[]` | | List of clip objects that will be played in sequence. Each clip can have one or more layers. | | |
 | `clips[].duration` | | Clip duration. See `defaults.duration`. If unset, the clip duration will be that of the **first video layer**. | `defaults.duration` | |
 | `clips[].transition` | | Specify transition at the **end** of this clip. See `defaults.transition` | `defaults.transition` | |
@@ -177,7 +183,7 @@ Edit specs are JavaScript / JSON objects describing the whole edit operation wit
 
 ### Transition types
 
-`transition.name` can be any of [gl-transitions](https://gl-transitions.com/gallery), or any of the following: `directional-left`, `directional-right`, `directional-up`, `directional-down` and `random`.
+`transition.name` can be any of [gl-transitions](https://gl-transitions.com/gallery), or any of the following: `directional-left`, `directional-right`, `directional-up`, `directional-down`, `random` or `dummy`.
 
 ### Layer types
 
