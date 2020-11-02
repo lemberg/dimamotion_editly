@@ -13,7 +13,23 @@ const { assertFileValid, checkTransition } = require('./util');
 const loadedFonts = [];
 
 
-async function parseConfig({ defaults: defaultsIn = {}, clips, allowRemoteRequests, ffprobePath }) {
+async function validateArbitraryAudio(audio) {
+  assert(audio === undefined || Array.isArray(audio));
+
+  if (audio) {
+    // eslint-disable-next-line no-restricted-syntax
+    for (const { path, cutFrom, cutTo, start } of audio) {
+      await assertFileValid(path, false);
+
+      if (cutFrom != null && cutTo != null) assert(cutTo > cutFrom);
+      if (cutFrom != null) assert(cutFrom >= 0);
+      if (cutTo != null) assert(cutTo >= 0);
+      assert(start == null || start >= 0, `Invalid "start" ${start}`);
+    }
+  }
+}
+
+async function parseConfig({ defaults: defaultsIn = {}, clips, arbitraryAudio: arbitraryAudioIn, backgroundAudioPath, loopAudio, allowRemoteRequests, ffprobePath }) {
   const defaults = {
     duration: 4,
     ...defaultsIn,
@@ -88,7 +104,9 @@ async function parseConfig({ defaults: defaultsIn = {}, clips, allowRemoteReques
     throw new Error(`Invalid layer type ${type}`);
   }
 
-  return pMap(clips, async (clip, clipIndex) => {
+  const detachedAudioByClip = {};
+
+  let clipsOut = await pMap(clips, async (clip, clipIndex) => {
     assert(typeof clip === 'object', '"clips" must contain objects with one or more layers');
     const { transition: userTransition, duration: userClipDuration, layers: layersIn } = clip;
 
@@ -136,7 +154,7 @@ async function parseConfig({ defaults: defaultsIn = {}, clips, allowRemoteReques
       }
 
       // Audio is handled later
-      if (type === 'audio') return layer;
+      if (['audio', 'detached-audio'].includes(type)) return layer;
 
       return handleLayer(layer);
     }, { concurrency: 1 }));
@@ -149,15 +167,15 @@ async function parseConfig({ defaults: defaultsIn = {}, clips, allowRemoteReques
 
     // We need to map again, because for audio, we need to know the correct clipDuration
     layersOut = await pMap(layersOut, async (layerIn) => {
-      const { type, path, visibleUntil, visibleFrom = 0 } = layerIn;
+      const { type, path, stop, start = 0 } = layerIn;
 
-      // This feature allows the user to show another layer overlayed (or replacing) parts of the lower layers (visibleFrom - visibleUntil)
-      const visibleDuration = ((visibleUntil || clipDuration) - visibleFrom);
-      assert(visibleDuration > 0 && visibleDuration <= clipDuration, `Invalid visibleFrom ${visibleFrom} or visibleUntil ${visibleUntil} (${clipDuration})`);
+      // This feature allows the user to show another layer overlayed (or replacing) parts of the lower layers (start - stop)
+      const layerDuration = ((stop || clipDuration) - start);
+      assert(layerDuration > 0 && layerDuration <= clipDuration, `Invalid start ${start} or stop ${stop} (${clipDuration})`);
       // TODO Also need to handle video layers (speedFactor etc)
-      // TODO handle audio in case of visibleFrom/visibleTo
+      // TODO handle audio in case of start/stop
 
-      const layer = { ...layerIn, visibleFrom, visibleDuration };
+      const layer = { ...layerIn, start, layerDuration };
 
       if (type === 'audio') {
         const { duration: fileDuration } = await readAudioFileInfo(ffprobePath, path);
@@ -181,7 +199,7 @@ async function parseConfig({ defaults: defaultsIn = {}, clips, allowRemoteReques
         return { ...layer, cutFrom, cutTo, speedFactor };
       }
 
-      if (layer.type === 'video') {
+      if (type === 'video') {
         const { inputDuration } = layer;
 
         let speedFactor;
@@ -197,8 +215,20 @@ async function parseConfig({ defaults: defaultsIn = {}, clips, allowRemoteReques
         return { ...layer, speedFactor };
       }
 
+      // These audio tracks are detached from the clips (can run over multiple clips)
+      // This is useful so we can have audio start relative to their parent clip's start time
+      if (type === 'detached-audio') {
+        const { cutFrom, cutTo, mixVolume } = layer;
+        if (!detachedAudioByClip[clipIndex]) detachedAudioByClip[clipIndex] = [];
+        detachedAudioByClip[clipIndex].push({ path, cutFrom, cutTo, mixVolume, start });
+        return undefined; // Will be filtered out
+      }
+
       return layer;
     });
+
+    // Filter out deleted layers
+    layersOut = layersOut.filter((l) => l);
 
     return {
       transition,
@@ -206,6 +236,57 @@ async function parseConfig({ defaults: defaultsIn = {}, clips, allowRemoteReques
       layers: layersOut,
     };
   }, { concurrency: 1 });
+
+
+  let totalClipDuration = 0;
+  const clipDetachedAudio = [];
+
+  // Need to map again because now we know all clip durations, and we can adjust transitions so they are safe
+  clipsOut = await pMap(clipsOut, async (clip, i) => {
+    const nextClip = clipsOut[i + 1];
+
+    // We clamp all transitions to half the length of every clip. If not, we risk that clips that are too short,
+    // will be eaten by transitions and could cause de-sync issues with audio/video
+    // NOTE: similar logic is duplicated in index.js
+    let safeTransitionDuration = 0;
+    if (nextClip) {
+      // Each clip can have two transitions, make sure we leave enough room:
+      safeTransitionDuration = Math.min(clip.duration / 2, nextClip.duration / 2, clip.transition.duration);
+    }
+
+    // We now know all clip durations so we can calculate the offset for detached audio tracks
+    // eslint-disable-next-line no-restricted-syntax
+    for (const { start, ...rest } of (detachedAudioByClip[i] || [])) {
+      clipDetachedAudio.push({ ...rest, start: totalClipDuration + (start || 0) });
+    }
+
+    totalClipDuration += clip.duration - safeTransitionDuration;
+
+    return {
+      ...clip,
+      transition: {
+        ...clip.transition,
+        duration: safeTransitionDuration,
+      },
+    };
+  });
+
+  // Audio can either come from `audioFilePath`, `audio` or from "detached" audio layers from clips
+  const arbitraryAudio = [
+    // Background audio is treated just like arbitrary audio
+    ...(backgroundAudioPath ? [{ path: backgroundAudioPath, mixVolume: 1, loop: loopAudio ? -1 : 0 }] : []),
+    ...arbitraryAudioIn,
+    ...clipDetachedAudio,
+  ];
+
+  await validateArbitraryAudio(arbitraryAudio);
+
+  return {
+    clips: clipsOut,
+    arbitraryAudio,
+  };
 }
 
-module.exports = parseConfig;
+module.exports = {
+  parseConfig,
+};

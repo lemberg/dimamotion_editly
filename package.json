@@ -1,7 +1,7 @@
 {
   "name": "editly",
   "description": "Simple, sexy, declarative video editing",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "main": "index.js",
   "author": "Mikael Finstad <finstaden@gmail.com>",
   "license": "MIT",
@@ -23,7 +23,8 @@
     "meow": "^6.1.0",
     "nanoid": "^3.1.12",
     "ndarray": "^1.0.19",
-    "p-map": "^4.0.0"
+    "p-map": "^4.0.0",
+    "semver": "^7.3.2"
   },
   "scripts": {
     "test": "exit 0",
