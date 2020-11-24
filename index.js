@@ -281,11 +281,7 @@ const Editly = async (config = {}) => {
       if (!verbose) {
         const percentDone = Math.floor(100 * (totalFramesWritten / estimatedTotalFrames));
         if (progressLog && progressLog instanceof Function) {
-          const status = progressLog(percentDone);
-          if (status) {
-            outProcess.cancel();
-            break;
-          }
+          await progressLog(percentDone, outProcess);
         }
         if (totalFramesWritten % 10 === 0) process.stdout.write(`${String(percentDone).padStart(3, ' ')}% `);
       }
